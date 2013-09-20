@@ -19,28 +19,30 @@ import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.mapred.Reducer;
 
 @SuppressWarnings("deprecation")
-public class KMeans {
- 
+public class KMeans {	
     public static String OUT = "outfile";
     public static String IN = "inputlarger";
-    public static List<Double> centers = new ArrayList<Double>();
-    public static class Map extends MapReduceBase implements Mapper<LongWritable, Text, DoubleWritable, DoubleWritable> {
-        
+    public static String CENTROID_FILE_NAME = "/centroid.txt";
+    public static String OUTPUT_FILE_NAME = "/part-00000";
+    public static String DATA_FILE_NAME = "/data.txt";
+    public static String JOB_NAME = "KMeans";
+    public static String SPLITTER = "\t| ";
+    public static List<Double> mCenters = new ArrayList<Double>();
+    
+    public static class Map extends MapReduceBase implements Mapper<LongWritable, Text, DoubleWritable, DoubleWritable> {        
         @Override
         public void configure(JobConf job) {
-            System.out.println("inside configure()");
             try {
 				// Fetch the file from Distributed Cache Read it and store the centroid in the ArrayList
                 Path[] cacheFiles = DistributedCache.getLocalCacheFiles(job);
                 if (cacheFiles != null && cacheFiles.length > 0) {
-                    System.out.println("Inside setup(): "+ cacheFiles[0].toString());
                     String line;
-                    centers.clear();
+                    mCenters.clear();
                     BufferedReader cacheReader = new BufferedReader(new FileReader(cacheFiles[0].toString()));
                     try {
                         while ((line = cacheReader.readLine()) != null) {
-                            String[] temp = line.split("\t| ");
-                            centers.add(Double.parseDouble(temp[0]));
+                            String[] temp = line.split(SPLITTER);
+                            mCenters.add(Double.parseDouble(temp[0]));
                         }
                     } finally {
                         cacheReader.close();
@@ -50,23 +52,22 @@ public class KMeans {
                 System.err.println("Exception reading DistribtuedCache: " + e);
             }
         }
+        
         @Override
         public void map(LongWritable key, Text value, OutputCollector<DoubleWritable, DoubleWritable> output, Reporter reporter) throws IOException {
             String line = value.toString();
             double point = Double.parseDouble(line);
-            double min1, min2 = Double.MAX_VALUE, nearest_center = centers.get(0);
+            double min1, min2 = Double.MAX_VALUE, nearest_center = mCenters.get(0);
                 // Find the minimum center from a point
-				for (double c : centers) {
+				for (double c : mCenters) {
                 	min1 = c - point;
                 	if (Math.abs(min1) < Math.abs(min2)) {
                         nearest_center = c;
                         min2 = min1;
-                    }
-                    
+                    }                    
                 }
             // Emit the nearest center and the point
-            output.collect(new DoubleWritable(nearest_center), new DoubleWritable(point));
-            
+            output.collect(new DoubleWritable(nearest_center), new DoubleWritable(point));            
         }
     }
  
@@ -87,11 +88,13 @@ public class KMeans {
 			newCenter = sum/no_elements;
             // Emit new center and point
 			output.collect(new DoubleWritable(newCenter), new Text(points));
-    }
-  } 
-   public static void main(String[] args) throws Exception {
+        }
+    } 
+    
+    public static void main(String[] args) throws Exception {
         run(args);
     }
+    
     public static void run(String[] args) throws Exception {
         IN = args[0];
         OUT = args[1];
@@ -104,16 +107,15 @@ public class KMeans {
         while (isdone == false) {
             JobConf conf = new JobConf(KMeans.class);
             if (iteration == 0) {
-                Path hdfsPath = new Path(input + "/centroid.txt");
+                Path hdfsPath = new Path(input + CENTROID_FILE_NAME);
                 // upload the file to hdfs. Overwrite any existing copy.
                  DistributedCache.addCacheFile(hdfsPath.toUri(), conf);
             } else {
-                Path hdfsPath = new Path(again_input + "/part-00000");
+                Path hdfsPath = new Path(again_input + OUTPUT_FIE_NAME);
                 // upload the file to hdfs. Overwrite any existing copy.
-                 DistributedCache.addCacheFile(hdfsPath.toUri(), conf);
-			                          
+                 DistributedCache.addCacheFile(hdfsPath.toUri(), conf);			                          
             }
-            conf.setJobName("KMeans");
+            conf.setJobName(JOB_NAME);
             conf.setMapOutputKeyClass(DoubleWritable.class);
             conf.setMapOutputValueClass(DoubleWritable.class);
             conf.setOutputKeyClass(DoubleWritable.class);
@@ -122,10 +124,11 @@ public class KMeans {
             conf.setReducerClass(Reduce.class);
             conf.setInputFormat(TextInputFormat.class);
             conf.setOutputFormat(TextOutputFormat.class);
-            FileInputFormat.setInputPaths(conf, new Path(input + "/data.txt"));
+            
+            FileInputFormat.setInputPaths(conf, new Path(input + DATA_FILE_NAME));
             FileOutputFormat.setOutputPath(conf, new Path(output));
             JobClient.runJob(conf);
-            Path ofile = new Path(output + "/part-00000");
+            Path ofile = new Path(output + OUTPUT_FIE_NAME);
             FileSystem fs = FileSystem.get(new Configuration());
             BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(ofile)));
             List<Double> centers_next = new ArrayList<Double>();
@@ -135,25 +138,27 @@ public class KMeans {
                 double c = Double.parseDouble(sp[0]);
                 centers_next.add(c);
                 line=br.readLine();
-            }
+            }            
             br.close();
-			String prev;
+			
+            String prev;
 			if (iteration == 0)
-				prev = input + "/centroid.txt";
+				prev = input + CENTROID_FILE_NAME;
 			else
-				prev = again_input + "/part-00000";
+				prev = again_input + OUTPUT_FILE_NAME;
 			Path prevfile = new Path(prev);
             FileSystem fs1 = FileSystem.get(new Configuration());
             BufferedReader br1 = new BufferedReader(new InputStreamReader(fs1.open(prevfile)));
             List<Double> centers_prev = new ArrayList<Double>();
             String l = br1.readLine();
             while (l != null){
-                String[] sp1 = l.split("\t| ");
+                String[] sp1 = l.split(SPLITTER);
                 double d = Double.parseDouble(sp1[0]);
                 centers_prev.add(d);
                 l=br1.readLine();
             }
             br1.close();
+            
             //Sort the old centroid and new centroid and check for convergence condition
 			Collections.sort(centers_next);
 			Collections.sort(centers_prev);
@@ -166,14 +171,10 @@ public class KMeans {
                     isdone = false;
                     break;
                 }
-                 //}
-			}
-             
+			}             
 			++iteration;
 			again_input = output;
 			output = OUT + System.nanoTime();
-       }
-      
+       }  
     }
-
 }

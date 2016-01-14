@@ -23,3 +23,23 @@ Step6: In the job configuration, we are reading both files and checking
 			convergence is reached 
 	    else 
 		    repeat step 2 with new centroids.
+		  
+
+Samples
+For Centroid, this should be fine:
+20.0
+30.0
+40.0
+
+For data something like this simple should work:
+20
+23
+19
+29
+33
+29
+43
+35
+18
+25
+27

@@ -135,7 +135,7 @@ public class KMeans {
 				// upload the file to hdfs. Overwrite any existing copy.
 				DistributedCache.addCacheFile(hdfsPath.toUri(), conf);
 			} else {
-				Path hdfsPath = new Path(again_input + OUTPUT_FIE_NAME);
+				Path hdfsPath = new Path(again_input + OUTPUT_FILE_NAME);
 				// upload the file to hdfs. Overwrite any existing copy.
 				DistributedCache.addCacheFile(hdfsPath.toUri(), conf);
 			}
@@ -156,7 +156,7 @@ public class KMeans {
 
 			JobClient.runJob(conf);
 
-			Path ofile = new Path(output + OUTPUT_FIE_NAME);
+			Path ofile = new Path(output + OUTPUT_FILE_NAME);
 			FileSystem fs = FileSystem.get(new Configuration());
 			BufferedReader br = new BufferedReader(new InputStreamReader(
 					fs.open(ofile)));
